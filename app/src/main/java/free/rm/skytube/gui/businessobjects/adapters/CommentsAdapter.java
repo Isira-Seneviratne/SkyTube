@@ -18,7 +18,6 @@
 package free.rm.skytube.gui.businessobjects.adapters;
 
 import android.content.Context;
-import android.os.AsyncTask;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -32,6 +31,7 @@ import com.bumptech.glide.Glide;
 import com.bumptech.glide.request.RequestOptions;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 import free.rm.skytube.R;
@@ -41,23 +41,26 @@ import free.rm.skytube.businessobjects.YouTube.POJOs.YouTubeComment;
 import free.rm.skytube.businessobjects.YouTube.POJOs.YouTubeCommentThread;
 import free.rm.skytube.businessobjects.YouTube.newpipe.NewPipeService;
 import free.rm.skytube.businessobjects.YouTube.newpipe.PagerBackend;
+import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers;
+import io.reactivex.rxjava3.core.Maybe;
+import io.reactivex.rxjava3.disposables.CompositeDisposable;
+import io.reactivex.rxjava3.disposables.Disposable;
+import io.reactivex.rxjava3.schedulers.Schedulers;
 
 /**
  * An adapter that will display comments in an {@link ExpandableListView}.
  */
 public class CommentsAdapter extends BaseExpandableListAdapter {
-
-	private PagerBackend<YouTubeCommentThread> commentThreadPager;
-	private List<YouTubeCommentThread>	commentThreadsList = new ArrayList<>();
-	private GetCommentsTask				getCommentsTask = null;
-	private ExpandableListView			expandableListView;
-	private View						commentsProgressBar;
-	private View						noVideoCommentsView;
-	private LayoutInflater				layoutInflater;
-	private Context 					context;
-
 	private static final String TAG = CommentsAdapter.class.getSimpleName();
 
+	private PagerBackend<YouTubeCommentThread> commentThreadPager;
+	private final List<YouTubeCommentThread> commentThreadsList = new ArrayList<>();
+	private final CompositeDisposable compositeDisposable = new CompositeDisposable();
+	private final ExpandableListView expandableListView;
+	private final View commentsProgressBar;
+	private final View noVideoCommentsView;
+	private final LayoutInflater layoutInflater;
+	private final Context context;
 
 	public CommentsAdapter(Context context, String videoId, ExpandableListView expandableListView, View commentsProgressBar, View noVideoCommentsView) {
 		this.context = context;
@@ -69,8 +72,7 @@ public class CommentsAdapter extends BaseExpandableListAdapter {
 		this.layoutInflater = LayoutInflater.from(expandableListView.getContext());
 		try {
 			this.commentThreadPager = NewPipeService.isPreferred() ? NewPipeService.get().getCommentPager(videoId) : new GetCommentThreads(videoId);
-			this.getCommentsTask = new GetCommentsTask();
-			this.getCommentsTask.execute();
+			compositeDisposable.add(getComments());
 		} catch (Exception e) {
 			SkyTubeApp.notifyUserOnError(context, e);
 		}
@@ -126,6 +128,9 @@ public class CommentsAdapter extends BaseExpandableListAdapter {
 		return false;
 	}
 
+	public void clearBackgroundTasks() {
+		compositeDisposable.clear();
+	}
 
 	private View getParentOrChildView(boolean getParentView, int groupPosition, int childPosition, View convertView, ViewGroup parent) {
 		View row;
@@ -154,11 +159,8 @@ public class CommentsAdapter extends BaseExpandableListAdapter {
 		// if it reached the bottom of the list, then try to get the next page of videos
 		if (getParentView  &&  groupPosition == getGroupCount() - 1) {
 			synchronized (this) {
-				if (this.getCommentsTask == null) {
-					Log.w(TAG, "Getting next page of comments...");
-					this.getCommentsTask = new GetCommentsTask();
-					this.getCommentsTask.execute();
-				}
+				Log.w(TAG, "Getting next page of comments...");
+				compositeDisposable.add(getComments());
 			}
 		}
 
@@ -233,37 +235,25 @@ public class CommentsAdapter extends BaseExpandableListAdapter {
 
 	////////////////////////////////////////////////////////////////////////////////////////////////
 
-	private class GetCommentsTask extends AsyncTask<Void, Void, List<YouTubeCommentThread>> {
+	private Disposable getComments() {
+		commentsProgressBar.setVisibility(View.VISIBLE);
+		noVideoCommentsView.setVisibility(View.GONE);
+		return Maybe.fromCallable(commentThreadPager::getSafeNextPage)
+				.subscribeOn(Schedulers.io())
+				.observeOn(AndroidSchedulers.mainThread())
+				.defaultIfEmpty(Collections.emptyList())
+				.subscribe(newComments -> {
+					SkyTubeApp.notifyUserOnError(expandableListView.getContext(), commentThreadPager.getLastException());
 
-		@Override
-		protected void onPreExecute() {
-			commentsProgressBar.setVisibility(View.VISIBLE);
-			noVideoCommentsView.setVisibility(View.GONE);
-		}
+					if (!newComments.isEmpty()) {
+						commentThreadsList.addAll(newComments);
+						notifyDataSetChanged();
+					}
+					if (commentThreadsList.isEmpty()) {
+						noVideoCommentsView.setVisibility(View.VISIBLE);
+					}
 
-		@Override
-		protected  List<YouTubeCommentThread> doInBackground(Void... params) {
-			return commentThreadPager.getSafeNextPage();
-		}
-
-		@Override
-		protected void onPostExecute(List<YouTubeCommentThread> newComments) {
-			SkyTubeApp.notifyUserOnError(expandableListView.getContext(), commentThreadPager.getLastException());
-
-			if (newComments != null) {
-				if (newComments.size() > 0) {
-					CommentsAdapter.this.commentThreadsList.addAll(newComments);
-					CommentsAdapter.this.notifyDataSetChanged();
-				}
-				if (commentThreadsList.isEmpty()) {
-                    noVideoCommentsView.setVisibility(View.VISIBLE);
-                }
-			}
-
-			commentsProgressBar.setVisibility(View.GONE);
-			getCommentsTask = null;
-		}
-
+					commentsProgressBar.setVisibility(View.GONE);
+				});
 	}
-
 }

@@ -25,7 +25,6 @@ import java.util.Set;
 import free.rm.skytube.BuildConfig;
 import free.rm.skytube.R;
 import free.rm.skytube.app.SkyTubeApp;
-import free.rm.skytube.businessobjects.AsyncTaskParallel;
 import free.rm.skytube.businessobjects.Logger;
 import free.rm.skytube.businessobjects.YouTube.POJOs.YouTubeChannel;
 import free.rm.skytube.businessobjects.YouTube.newpipe.NewPipeService;
@@ -36,7 +35,9 @@ import free.rm.skytube.gui.businessobjects.SkyTubeMaterialDialog;
 import free.rm.skytube.gui.businessobjects.adapters.SubsAdapter;
 import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers;
 import io.reactivex.rxjava3.core.Flowable;
+import io.reactivex.rxjava3.core.Single;
 import io.reactivex.rxjava3.disposables.CompositeDisposable;
+import io.reactivex.rxjava3.disposables.Disposable;
 import io.reactivex.rxjava3.schedulers.Schedulers;
 
 /**
@@ -85,6 +86,11 @@ public class VideoBlockerPreferenceFragment extends PreferenceFragmentCompat {
 		findPreference(getString(R.string.pref_key_dislikes_filter)).setOnPreferenceChangeListener(settingUpdatesPreferenceChange);
 	}
 
+	@Override
+	public void onDestroy() {
+		compositeDisposable.clear();
+		super.onDestroy();
+	}
 
 	/**
 	 * @return True if the user wants to use the video blocker, false otherwise.
@@ -356,8 +362,36 @@ public class VideoBlockerPreferenceFragment extends PreferenceFragmentCompat {
 					.content(R.string.input_channel_url)
 					.positiveText(R.string.add)
 					.inputType(InputType.TYPE_TEXT_VARIATION_URI)
-					.input("https://www.youtube.com/channel/xxxxxxxxx", null, false, (dialog, channelUrl) -> new GetChannelIdFromUrlTask(channelUrl.toString(), WhitelistChannelsDialog.this).executeInParallel())
+					.input("https://www.youtube.com/channel/xxxxxxxxx", null, false,
+							(dialog, channelUrl) -> compositeDisposable.add(
+									getChannelIdFromUrl(channelUrl.toString(), WhitelistChannelsDialog.this)))
 					.show();
+		}
+
+		/**
+		 * A task that given a channel URL will return the channel's ID.
+		 */
+		private Disposable getChannelIdFromUrl(@NonNull String channelUrl,
+											   @NonNull OnGetChannelInfoListener onGetChannelInfoListener) {
+			final MaterialDialog getChannelInfoDialog = new SkyTubeMaterialDialog(getActivity())
+					.progress(true, 0)
+					.content(R.string.please_wait)
+					.positiveText("")
+					.negativeText("")
+					.show();
+			return Single.fromCallable(() -> {
+				NewPipeService.initNewPipe();
+				StreamingService youtubeService = ServiceList.YouTube;
+
+				ChannelInfo channelInfo = ChannelInfo.getInfo(youtubeService, channelUrl);
+				return new MultiSelectListPreferenceItem(channelInfo.getId(), channelInfo.getName(), false);
+			})
+					.subscribeOn(Schedulers.computation())
+					.observeOn(AndroidSchedulers.mainThread())
+					.subscribe(channel -> {
+						onGetChannelInfoListener.onChannelInfo(channel);
+						getChannelInfoDialog.dismiss();
+					}, throwable -> Logger.e(this, "An error occurred while getting channel ID", throwable));
 		}
 
 		@Override
@@ -376,58 +410,6 @@ public class VideoBlockerPreferenceFragment extends PreferenceFragmentCompat {
 							.show();
 				}
 			}
-		}
-	}
-
-	/**
-	 * A task that given a channel URL will return the channel's ID.
-	 */
-	private class GetChannelIdFromUrlTask extends AsyncTaskParallel<Void, Void, MultiSelectListPreferenceItem> {
-		private String                      channelUrl;
-		private OnGetChannelInfoListener    onGetChannelInfoListener;
-		private MaterialDialog              getChannelInfoDialog;
-
-		public GetChannelIdFromUrlTask(String channelUrl, OnGetChannelInfoListener onGetChannelInfoListener) {
-			this.channelUrl = channelUrl;
-			this.onGetChannelInfoListener = onGetChannelInfoListener;
-		}
-
-		@Override
-		protected void onPreExecute() {
-			super.onPreExecute();
-			getChannelInfoDialog = new SkyTubeMaterialDialog(getActivity())
-					.progress(true, 0)
-					.content(R.string.please_wait)
-					.positiveText("")
-					.negativeText("")
-					.show();
-		}
-
-		@Override
-		protected MultiSelectListPreferenceItem doInBackground(Void... v) {
-			MultiSelectListPreferenceItem channel = null;
-
-			try {
-				NewPipeService.initNewPipe();
-				StreamingService youtubeService = ServiceList.YouTube;
-
-				ChannelInfo channelInfo = ChannelInfo.getInfo(youtubeService, channelUrl);
-				channel = new MultiSelectListPreferenceItem(channelInfo.getId(), channelInfo.getName(), false);
-
-			} catch (Exception tr) {
-				lastException = tr;
-				Logger.e(this, "An error occurred while getting channel ID", tr);
-			}
-
-			return channel;
-		}
-
-		@Override
-		protected void onPostExecute(MultiSelectListPreferenceItem channel) {
-			super.onPostExecute(channel);
-			onGetChannelInfoListener.onChannelInfo(channel);
-			getChannelInfoDialog.dismiss();
-			getChannelInfoDialog = null;
 		}
 	}
 

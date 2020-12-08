@@ -34,10 +34,14 @@ import java.util.Set;
 
 import free.rm.skytube.R;
 import free.rm.skytube.app.SkyTubeApp;
-import free.rm.skytube.businessobjects.AsyncTaskParallel;
 import free.rm.skytube.businessobjects.YouTube.POJOs.YouTubeAPIKey;
 import free.rm.skytube.businessobjects.YouTube.ValidateYouTubeAPIKey;
 import free.rm.skytube.gui.businessobjects.adapters.SubsAdapter;
+import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers;
+import io.reactivex.rxjava3.core.Single;
+import io.reactivex.rxjava3.disposables.CompositeDisposable;
+import io.reactivex.rxjava3.disposables.Disposable;
+import io.reactivex.rxjava3.schedulers.Schedulers;
 
 /**
  * Preference fragment for other settings.
@@ -45,6 +49,8 @@ import free.rm.skytube.gui.businessobjects.adapters.SubsAdapter;
 public class OthersPreferenceFragment extends PreferenceFragmentCompat
 		implements SharedPreferences.OnSharedPreferenceChangeListener {
 	ListPreference defaultTabPref;
+
+	private final CompositeDisposable compositeDisposable = new CompositeDisposable();
 
 	@Override
 	public void onCreatePreferences(Bundle savedInstanceState, String rootKey) {
@@ -99,6 +105,12 @@ public class OthersPreferenceFragment extends PreferenceFragmentCompat
 	}
 
 	@Override
+	public void onDestroy() {
+		compositeDisposable.clear();
+		super.onDestroy();
+	}
+
+	@Override
 	public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, String key) {
 		if(key != null) {
 			if (key.equals(getString(R.string.pref_key_default_tab_name))) {
@@ -117,7 +129,7 @@ public class OthersPreferenceFragment extends PreferenceFragmentCompat
 
 					if (!youtubeAPIKey.isEmpty()) {
 						// validate the user's API key
-						new ValidateYouTubeAPIKeyTask(youtubeAPIKey).executeInParallel();
+						compositeDisposable.add(validateYouTubeAPIKey(youtubeAPIKey));
 					}
 					else {
 						// inform the user that we are going to use the default YouTube API key and
@@ -160,50 +172,33 @@ public class OthersPreferenceFragment extends PreferenceFragmentCompat
 
 	////////////////////////////////////////////////////////////////////////////////////////////////
 
-
 	/**
 	 * A task that validates the given YouTube API key.
 	 */
-	private class ValidateYouTubeAPIKeyTask extends AsyncTaskParallel<Void, Void, Boolean> {
+	private Disposable validateYouTubeAPIKey(String youtubeAPIKey) {
+		return Single.fromCallable(() -> new ValidateYouTubeAPIKey(youtubeAPIKey).isKeyValid())
+				.subscribeOn(Schedulers.io())
+				.observeOn(AndroidSchedulers.mainThread())
+				.subscribe(isKeyValid -> {
+					if (!isKeyValid) {
+						// if the validation failed, reset the preference to null
+						((EditTextPreference) findPreference(getString(R.string.pref_youtube_api_key))).setText(null);
+					} else {
+						YouTubeAPIKey key = YouTubeAPIKey.reset();
+						if (key.isUserApiKeySet()) {
+							// if the key is valid, then inform the user that the custom API key is valid and
+							// that he needs to restart the app in order to use it
 
-		private String youtubeAPIKey;
+							displayRestartDialog(R.string.pref_youtube_api_key_custom, false);
+						} else {
+							displayRestartDialog(R.string.pref_youtube_api_key_default, false);
+						}
+					}
 
-
-		public ValidateYouTubeAPIKeyTask(String youtubeAPIKey) {
-			this.youtubeAPIKey = youtubeAPIKey;
-		}
-
-
-		@Override
-		protected Boolean doInBackground(Void... voids) {
-			ValidateYouTubeAPIKey validateKey = new ValidateYouTubeAPIKey(youtubeAPIKey);
-			return validateKey.isKeyValid();
-		}
-
-
-		@Override
-		protected void onPostExecute(Boolean isKeyValid) {
-			if (!isKeyValid) {
-				// if the validation failed, reset the preference to null
-				((EditTextPreference) findPreference(getString(R.string.pref_youtube_api_key))).setText(null);
-			} else {
-				YouTubeAPIKey key = YouTubeAPIKey.reset();
-				if (key.isUserApiKeySet()) {
-					// if the key is valid, then inform the user that the custom API key is valid and
-					// that he needs to restart the app in order to use it
-
-					displayRestartDialog(R.string.pref_youtube_api_key_custom, false);
-				} else {
-					displayRestartDialog(R.string.pref_youtube_api_key_default, false);
-				}
-			}
-
-			// display a toast to show that the key is not valid
-			if (!isKeyValid) {
-				Toast.makeText(getActivity(), getString(R.string.pref_youtube_api_key_error), Toast.LENGTH_LONG).show();
-			}
-		}
-
+					// display a toast to show that the key is not valid
+					if (!isKeyValid) {
+						Toast.makeText(getActivity(), getString(R.string.pref_youtube_api_key_error), Toast.LENGTH_LONG).show();
+					}
+				});
 	}
-
 }

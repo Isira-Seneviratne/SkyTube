@@ -35,13 +35,16 @@ import java.util.Locale;
 import free.rm.skytube.BuildConfig;
 import free.rm.skytube.R;
 import free.rm.skytube.gui.businessobjects.SkyTubeMaterialDialog;
-import free.rm.skytube.gui.businessobjects.updates.UpdatesCheckerTask;
+import free.rm.skytube.gui.businessobjects.updates.UpdateTasks;
+import io.reactivex.rxjava3.disposables.CompositeDisposable;
 
 /**
  * Preference fragment for about (this app) related settings.
  */
 public class AboutPreferenceFragment extends PreferenceFragmentCompat {
 	private static final String TAG = AboutPreferenceFragment.class.getSimpleName();
+
+	private final CompositeDisposable compositeDisposable = new CompositeDisposable();
 
 	@Override
 	public void onCreatePreferences(Bundle savedInstanceState, String rootKey) {
@@ -58,7 +61,7 @@ public class AboutPreferenceFragment extends PreferenceFragmentCompat {
 			getPreferenceScreen().removePreference(updatesPref);
 		} else {
 			updatesPref.setOnPreferenceClickListener(preference -> {
-				new UpdatesCheckerTask(getActivity(), true).executeInParallel();
+				compositeDisposable.add(UpdateTasks.checkForUpdates(requireActivity(), true));
 				return true;
 			});
 		}
@@ -86,6 +89,12 @@ public class AboutPreferenceFragment extends PreferenceFragmentCompat {
 			displayAppLicense();
 			return true;
 		});
+	}
+
+	@Override
+	public void onDestroy() {
+		compositeDisposable.clear();
+		super.onDestroy();
 	}
 
 	/**

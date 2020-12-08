@@ -23,6 +23,7 @@ import android.content.Intent;
 import android.database.Cursor;
 import android.graphics.Color;
 import android.graphics.drawable.Drawable;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.view.Menu;
@@ -46,6 +47,7 @@ import androidx.fragment.app.FragmentTransaction;
 import com.mikepenz.actionitembadge.library.ActionItemBadge;
 import com.mikepenz.actionitembadge.library.utils.BadgeStyle;
 
+import java.io.File;
 import java.io.Serializable;
 import java.util.ArrayList;
 
@@ -59,17 +61,22 @@ import free.rm.skytube.businessobjects.YouTube.POJOs.YouTubeChannel;
 import free.rm.skytube.businessobjects.YouTube.POJOs.YouTubePlaylist;
 import free.rm.skytube.businessobjects.YouTube.VideoBlocker;
 import free.rm.skytube.businessobjects.db.DownloadedVideosDb;
+import free.rm.skytube.businessobjects.db.DownloadedVideosTable;
 import free.rm.skytube.businessobjects.db.SearchHistoryDb;
 import free.rm.skytube.businessobjects.db.SearchHistoryTable;
 import free.rm.skytube.gui.businessobjects.BlockedVideosDialog;
 import free.rm.skytube.gui.businessobjects.adapters.SearchHistoryCursorAdapter;
 import free.rm.skytube.gui.businessobjects.fragments.FragmentEx;
-import free.rm.skytube.gui.businessobjects.updates.UpdatesCheckerTask;
+import free.rm.skytube.gui.businessobjects.updates.UpdateTasks;
 import free.rm.skytube.gui.fragments.ChannelBrowserFragment;
 import free.rm.skytube.gui.fragments.MainFragment;
 import free.rm.skytube.gui.fragments.PlaylistVideosFragment;
 import free.rm.skytube.gui.fragments.SearchVideoGridFragment;
 import free.rm.skytube.gui.fragments.SubscriptionsFeedFragment;
+import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers;
+import io.reactivex.rxjava3.core.Completable;
+import io.reactivex.rxjava3.disposables.CompositeDisposable;
+import io.reactivex.rxjava3.schedulers.Schedulers;
 
 /**
  * Main activity (launcher).  This activity holds {@link free.rm.skytube.gui.fragments.VideosGridFragment}.
@@ -78,15 +85,6 @@ import free.rm.skytube.gui.fragments.SubscriptionsFeedFragment;
  * the Chromecast specific functionality)
  */
 public class MainActivity extends BaseActivity {
-	@BindView(R.id.fragment_container)
-	protected FrameLayout           fragmentContainer;
-
-	/** Fragment that shows Videos from a specific Playlist */
-	private VideoBlockerPlugin      videoBlockerPlugin;
-
-	/** Set to true of the UpdatesCheckerTask has run; false otherwise. */
-	private static boolean updatesCheckerTaskRan = false;
-
 	public static final String ACTION_VIEW_CHANNEL = "MainActivity.ViewChannel";
 	public static final String ACTION_VIEW_FEED = "MainActivity.ViewFeed";
 	public static final String ACTION_VIEW_PLAYLIST = "MainActivity.ViewPlaylist";
@@ -102,6 +100,16 @@ public class MainActivity extends BaseActivity {
 	private static final String SEARCH_FRAGMENT_TAG = SEARCH_FRAGMENT + ".Tag";
 	private static final String[] FRAGMENTS = {MAIN_FRAGMENT, SEARCH_FRAGMENT, CHANNEL_BROWSER_FRAGMENT, PLAYLIST_VIDEOS_FRAGMENT};
 
+	/** Set to true of the UpdatesCheckerTask has run; false otherwise. */
+	private static boolean updatesCheckerTaskRan = false;
+
+	@BindView(R.id.fragment_container)
+	protected FrameLayout           fragmentContainer;
+
+	/** Fragment that shows Videos from a specific Playlist */
+	private VideoBlockerPlugin      videoBlockerPlugin;
+
+	private final CompositeDisposable compositeDisposable = new CompositeDisposable();
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
@@ -114,13 +122,36 @@ public class MainActivity extends BaseActivity {
 
 		// check for updates (one time only)
 		if (!updatesCheckerTaskRan) {
-			new UpdatesCheckerTask(this, false).executeInParallel();
+			compositeDisposable.add(UpdateTasks.checkForUpdates(this, false));
 			updatesCheckerTaskRan = true;
 		}
 
 		SkyTubeApp.setFeedUpdateInterval();
 		// Delete any missing downloaded videos
-		new DownloadedVideosDb.RemoveMissingVideosTask().executeInParallel();
+		compositeDisposable.add(
+				Completable.fromRunnable(() -> {
+					Cursor cursor = DownloadedVideosDb.getVideoDownloadsDb().getReadableDatabase().query(
+							DownloadedVideosTable.TABLE_NAME,
+							new String[]{DownloadedVideosTable.COL_YOUTUBE_VIDEO_ID, DownloadedVideosTable.COL_FILE_URI},
+							null,
+							null, null, null, null);
+
+					if(cursor.moveToNext()) {
+						do {
+							String videoId = cursor.getString(cursor.getColumnIndex(DownloadedVideosTable.COL_YOUTUBE_VIDEO_ID));
+							Uri uri = Uri.parse(cursor.getString(cursor.getColumnIndex(DownloadedVideosTable.COL_FILE_URI)));
+							File file = new File(uri.getPath());
+							if(!file.exists()) {
+								DownloadedVideosDb.getVideoDownloadsDb().remove(videoId);
+							}
+						} while(cursor.moveToNext());
+					}
+					cursor.close();
+				})
+						.subscribeOn(Schedulers.io())
+						.observeOn(AndroidSchedulers.mainThread())
+						.subscribe()
+		);
 
 		setContentView(R.layout.activity_main);
 
@@ -141,6 +172,12 @@ public class MainActivity extends BaseActivity {
 		} else {
 			this.videoBlockerPlugin = new VideoBlockerPlugin(this);
 		}
+	}
+
+	@Override
+	protected void onDestroy() {
+		super.onDestroy();
+		compositeDisposable.clear();
 	}
 
 	@Override

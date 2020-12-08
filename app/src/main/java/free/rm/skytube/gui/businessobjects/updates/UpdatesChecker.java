@@ -33,18 +33,16 @@ import free.rm.skytube.BuildConfig;
  * Checks for app updates.
  */
 public class UpdatesChecker {
+	private static final String TAG = UpdatesChecker.class.getSimpleName();
 
-	private URL		latestApkUrl;
-	private String	latestApkVersion;
-	private String	releaseNotes;
-	private final boolean	fetchReleaseNotes;
-	private final String	currentVersionNumber;
+	private URL	latestApkUrl;
+	private String latestApkVersion;
+	private String releaseNotes;
+	private final boolean fetchReleaseNotes;
+	private final String currentVersionNumber;
 	private boolean updatesAvailable;
 
-	private static String TAG = UpdatesChecker.class.getSimpleName();
-
-
-	UpdatesChecker(boolean fetchReleaseNotes, String	currentVersionNumber) {
+	UpdatesChecker(boolean fetchReleaseNotes, String currentVersionNumber) {
 		this.fetchReleaseNotes = fetchReleaseNotes;
 		this.currentVersionNumber = currentVersionNumber;
 	}
@@ -87,7 +85,6 @@ public class UpdatesChecker {
 		}
 	}
 
-
 	public URL getLatestApkUrl() {
 		return latestApkUrl;
 	}
@@ -115,7 +112,6 @@ public class UpdatesChecker {
 		return json.getString("tag_name").substring(1);
 	}
 
-
 	private String getReleaseNotes(JSONObject json) throws JSONException {
 		return json.getString("body");
 	}
@@ -132,15 +128,10 @@ public class UpdatesChecker {
 		for (int i=0; i < assets.length();i ++) {
 			JSONObject asset = assets.getJSONObject(i);
 			String name = asset.getString("name");
-			if (name != null) {
-				if (name.toLowerCase().startsWith("skytube-" + BuildConfig.FLAVOR + "-")) {
-					return new URL(asset.getString("browser_download_url"));
-				}
+			if (name.toLowerCase().startsWith("skytube-" + BuildConfig.FLAVOR + "-")) {
+				return new URL(asset.getString("browser_download_url"));
 			}
 		}
 		return null;
 	}
-
-
-
 }

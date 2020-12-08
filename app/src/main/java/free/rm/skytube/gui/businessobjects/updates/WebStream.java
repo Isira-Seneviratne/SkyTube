@@ -31,12 +31,12 @@ import java.net.URL;
  * Given a {@link URL}, it will extract the stream ({@link InputStream} and the stream size.
  */
 public class WebStream implements Closeable {
+	private static final String TAG = WebStream.class.getSimpleName();
+
 	/** Stream of the remote file */
 	private InputStream stream = null;
 	/** Stream size in bytes */
 	private	int streamSize = 0;
-
-	private static final String TAG = WebStream.class.getSimpleName();
 
 	public WebStream(URL remoteFileUrl) throws IOException {
 		HttpURLConnection urlConnection = (HttpURLConnection) remoteFileUrl.openConnection();

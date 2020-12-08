@@ -10,11 +10,14 @@ import androidx.annotation.Nullable;
 import butterknife.BindView;
 import free.rm.skytube.R;
 import free.rm.skytube.app.SkyTubeApp;
-import free.rm.skytube.businessobjects.AsyncTaskParallel;
 import free.rm.skytube.businessobjects.VideoCategory;
 import free.rm.skytube.businessobjects.db.DownloadedVideosDb;
 import free.rm.skytube.gui.businessobjects.adapters.OrderableVideoGridAdapter;
 import free.rm.skytube.gui.businessobjects.fragments.OrderableVideosGridFragment;
+import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers;
+import io.reactivex.rxjava3.core.Single;
+import io.reactivex.rxjava3.disposables.Disposable;
+import io.reactivex.rxjava3.schedulers.Schedulers;
 
 /**
  * A fragment that holds videos downloaded by the user.
@@ -73,9 +76,8 @@ public class DownloadedVideosFragment extends OrderableVideosGridFragment implem
 	}
 
 	private void populateList() {
-		new PopulateDownloadsTask().executeInParallel();
+		compositeDisposable.add(populateDownloads());
 	}
-
 
 	/**
 	 * A task that:
@@ -83,33 +85,27 @@ public class DownloadedVideosFragment extends OrderableVideosGridFragment implem
 	 *   2. updated the UI accordingly (wrt step 1)
 	 *   3. get the downloaded videos asynchronously.
 	 */
-	private class PopulateDownloadsTask extends AsyncTaskParallel<Void, Void, Integer> {
+	private Disposable populateDownloads() {
+		return Single.fromCallable(() -> DownloadedVideosDb.getVideoDownloadsDb().getMaximumOrderNumber())
+				.subscribeOn(Schedulers.io())
+				.observeOn(AndroidSchedulers.mainThread())
+				.subscribe(maximumOrderNumber -> {
+					if (swipeRefreshLayout == null) {
+						// fragment already disposed
+						return;
+					}
+					// If no videos have been downloaded, show the text notifying the user, otherwise
+					// show the swipe refresh layout that contains the actual video grid.
+					if (maximumOrderNumber <= 0) {
+						swipeRefreshLayout.setVisibility(View.GONE);
+						noDownloadedVideosText.setVisibility(View.VISIBLE);
+					} else {
+						swipeRefreshLayout.setVisibility(View.VISIBLE);
+						noDownloadedVideosText.setVisibility(View.GONE);
 
-		@Override
-		protected Integer doInBackground(Void... params) {
-			return DownloadedVideosDb.getVideoDownloadsDb().getMaximumOrderNumber();
-		}
-
-
-		@Override
-		protected void onPostExecute(Integer maximumOrderNumber) {
-			if (swipeRefreshLayout == null) {
-				// fragment already disposed
-				return;
-			}
-			// If no videos have been downloaded, show the text notifying the user, otherwise
-			// show the swipe refresh layout that contains the actual video grid.
-			if (maximumOrderNumber <= 0) {
-				swipeRefreshLayout.setVisibility(View.GONE);
-				noDownloadedVideosText.setVisibility(View.VISIBLE);
-			} else {
-				swipeRefreshLayout.setVisibility(View.VISIBLE);
-				noDownloadedVideosText.setVisibility(View.GONE);
-
-				// set video category and get the bookmarked videos asynchronously
-				videoGridAdapter.setVideoCategory(VideoCategory.DOWNLOADED_VIDEOS);
-			}
-		}
-
+						// set video category and get the bookmarked videos asynchronously
+						videoGridAdapter.setVideoCategory(VideoCategory.DOWNLOADED_VIDEOS);
+					}
+				});
 	}
 }

@@ -107,7 +107,7 @@ public abstract class BaseActivity extends AppCompatActivity implements MainActi
 	@BindView(R.id.chromecastLoadingSpinner)
 	ProgressBar chromecastLoadingSpinner;
 
-	private final CompositeDisposable compositeDisposable = new CompositeDisposable();
+	protected final CompositeDisposable compositeDisposable = new CompositeDisposable();
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {

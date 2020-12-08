@@ -27,13 +27,16 @@ import androidx.annotation.Nullable;
 import butterknife.BindView;
 import free.rm.skytube.R;
 import free.rm.skytube.app.SkyTubeApp;
-import free.rm.skytube.businessobjects.AsyncTaskParallel;
 import free.rm.skytube.businessobjects.VideoCategory;
 import free.rm.skytube.businessobjects.YouTube.POJOs.YouTubeVideo;
 import free.rm.skytube.businessobjects.YouTube.newpipe.VideoId;
 import free.rm.skytube.businessobjects.db.BookmarksDb;
 import free.rm.skytube.gui.businessobjects.adapters.OrderableVideoGridAdapter;
 import free.rm.skytube.gui.businessobjects.fragments.OrderableVideosGridFragment;
+import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers;
+import io.reactivex.rxjava3.core.Single;
+import io.reactivex.rxjava3.disposables.Disposable;
+import io.reactivex.rxjava3.schedulers.Schedulers;
 
 /**
  * Fragment that displays bookmarked videos.
@@ -56,7 +59,7 @@ public class BookmarksFragment extends OrderableVideosGridFragment implements Bo
 	}
 
 	private void populateList() {
-		new PopulateBookmarksTask().executeInParallel();
+		compositeDisposable.add(populateBookmarks());
 	}
 
 	@Override
@@ -133,27 +136,23 @@ public class BookmarksFragment extends OrderableVideosGridFragment implements Bo
 	 *   2. updated the UI accordingly (wrt step 1)
 	 *   3. get the bookmarked videos asynchronously.
 	 */
-	private class PopulateBookmarksTask extends AsyncTaskParallel<Void, Void, Integer> {
-
-		@Override
-		protected Integer doInBackground(Void... params) {
-			return BookmarksDb.getBookmarksDb().getTotalBookmarks();
-		}
-
-		@Override
-		protected void onPostExecute(Integer numVideosBookmarked) {
-			if (swipeRefreshLayout == null) {
-				// fragment already disposed
-				return;
-			}
-			// If no videos have been bookmarked, show the text notifying the user, otherwise
-			// show the swipe refresh layout that contains the actual video grid.
-			boolean listShouldBeVisible = numVideosBookmarked > 0;
-			setBookmarkListVisible(listShouldBeVisible);
-			if (listShouldBeVisible) {
-				// set video category and get the bookmarked videos asynchronously
-				videoGridAdapter.setVideoCategory(VideoCategory.BOOKMARKS_VIDEOS);
-			}
-		}
+	private Disposable populateBookmarks() {
+		return Single.fromCallable(() -> BookmarksDb.getBookmarksDb().getTotalBookmarks())
+				.subscribeOn(Schedulers.io())
+				.observeOn(AndroidSchedulers.mainThread())
+				.subscribe(numVideosBookmarked -> {
+					if (swipeRefreshLayout == null) {
+						// fragment already disposed
+						return;
+					}
+					// If no videos have been bookmarked, show the text notifying the user, otherwise
+					// show the swipe refresh layout that contains the actual video grid.
+					boolean listShouldBeVisible = numVideosBookmarked > 0;
+					setBookmarkListVisible(listShouldBeVisible);
+					if (listShouldBeVisible) {
+						// set video category and get the bookmarked videos asynchronously
+						videoGridAdapter.setVideoCategory(VideoCategory.BOOKMARKS_VIDEOS);
+					}
+				});
 	}
 }

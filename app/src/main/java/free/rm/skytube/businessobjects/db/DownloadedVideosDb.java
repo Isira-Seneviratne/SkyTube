@@ -25,7 +25,6 @@ import java.util.Set;
 import free.rm.skytube.R;
 import free.rm.skytube.app.Settings;
 import free.rm.skytube.app.SkyTubeApp;
-import free.rm.skytube.businessobjects.AsyncTaskParallel;
 import free.rm.skytube.businessobjects.Logger;
 import free.rm.skytube.businessobjects.YouTube.POJOs.CardData;
 import free.rm.skytube.businessobjects.YouTube.POJOs.YouTubeChannel;
@@ -234,7 +233,7 @@ public class DownloadedVideosDb extends SQLiteOpenHelperEx implements OrderableD
 	 * @param videoId
 	 * @return
 	 */
-	private boolean remove(String videoId) {
+	public boolean remove(String videoId) {
 		int rowsDeleted = getWritableDatabase().delete(DownloadedVideosTable.TABLE_NAME,
 						DownloadedVideosTable.COL_YOUTUBE_VIDEO_ID + " = ?",
 						new String[]{videoId});
@@ -490,32 +489,4 @@ public class DownloadedVideosDb extends SQLiteOpenHelperEx implements OrderableD
 	public static void setHasUpdated(boolean hasUpdated) {
 		DownloadedVideosDb.hasUpdated = hasUpdated;
 	}
-
-	/**
-	 * AsyncTask to remove any videos from the Database whose local files have gone missing.
-	 */
-	public static class RemoveMissingVideosTask extends AsyncTaskParallel<Void, Void, Void> {
-		@Override
-		protected Void doInBackground(Void... voids) {
-			Cursor	cursor = getVideoDownloadsDb().getReadableDatabase().query(
-							DownloadedVideosTable.TABLE_NAME,
-							new String[]{DownloadedVideosTable.COL_YOUTUBE_VIDEO_ID, DownloadedVideosTable.COL_FILE_URI},
-							null,
-							null, null, null, null);
-
-			if(cursor.moveToNext()) {
-				do {
-					String videoId = cursor.getString(cursor.getColumnIndex(DownloadedVideosTable.COL_YOUTUBE_VIDEO_ID));
-					Uri uri = Uri.parse(cursor.getString(cursor.getColumnIndex(DownloadedVideosTable.COL_FILE_URI)));
-					File file = new File(uri.getPath());
-					if(!file.exists()) {
-						getVideoDownloadsDb().remove(videoId);
-					}
-				} while(cursor.moveToNext());
-			}
-			cursor.close();
-			return null;
-		}
-	}
-
 }

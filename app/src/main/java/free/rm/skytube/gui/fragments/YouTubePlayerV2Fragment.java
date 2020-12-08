@@ -720,6 +720,7 @@ public class YouTubePlayerV2Fragment extends ImmersiveModeFragment implements Yo
 	@Override
 	public void onDestroy() {
 		compositeDisposable.clear();
+		commentsAdapter.clearBackgroundTasks();
 		super.onDestroy();
 		// stop the player from playing (when this fragment is going to be destroyed) and clean up
 		player.stop();

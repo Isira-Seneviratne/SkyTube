@@ -51,7 +51,6 @@ import free.rm.skytube.businessobjects.YouTube.POJOs.YouTubeChannel;
 import free.rm.skytube.businessobjects.YouTube.POJOs.YouTubeVideo;
 import free.rm.skytube.businessobjects.YouTube.YouTubeTasks;
 import free.rm.skytube.businessobjects.YouTube.newpipe.ContentId;
-import free.rm.skytube.businessobjects.YouTube.newpipe.NewPipeUtils;
 import free.rm.skytube.businessobjects.db.DatabaseTasks;
 import free.rm.skytube.businessobjects.db.DownloadedVideosDb;
 import free.rm.skytube.businessobjects.db.PlaybackStatusDb;
@@ -214,6 +213,7 @@ public class YouTubePlayerV1Fragment extends ImmersiveModeFragment implements Me
 	public void onDestroy() {
 		compositeDisposable.clear();
 		videoDescSubscribeButton.clearBackgroundTasks();
+		commentsAdapter.clearBackgroundTasks();
 		super.onDestroy();
 	}
 

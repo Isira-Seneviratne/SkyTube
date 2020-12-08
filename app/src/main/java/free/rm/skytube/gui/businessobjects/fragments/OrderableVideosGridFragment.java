@@ -10,11 +10,14 @@ import androidx.recyclerview.widget.ItemTouchHelper;
 import free.rm.skytube.gui.businessobjects.SimpleItemTouchHelperCallback;
 import free.rm.skytube.gui.businessobjects.adapters.OrderableVideoGridAdapter;
 import free.rm.skytube.gui.fragments.VideosGridFragment;
+import io.reactivex.rxjava3.disposables.CompositeDisposable;
 
 /**
  * A VideosGridFragment that supports reordering of the videos in the Grid.
  */
 public abstract class OrderableVideosGridFragment extends VideosGridFragment {
+	protected CompositeDisposable compositeDisposable = new CompositeDisposable();
+
 	public OrderableVideosGridFragment() {
 	}
 
@@ -28,5 +31,11 @@ public abstract class OrderableVideosGridFragment extends VideosGridFragment {
 			touchHelper.attachToRecyclerView(gridView);
 		}
 		return view;
+	}
+
+	@Override
+	public void onDestroy() {
+		compositeDisposable.clear();
+		super.onDestroy();
 	}
 }
